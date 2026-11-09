@@ -1,0 +1,56 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+/venv/
+/.venv/
+/env/
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Frontend dependencies and generated output
+node_modules/
+dist/
+dist-electron/
+/src_vue/release/
+/build/
+
+# Runtime state and logs
+/.run/
+data/
+logs/
+*.log
+*.pid
+*.db
+*.sqlite
+
+# IDE and operating system files
+.vscode/
+.idea/
+.cursor/
+.cache/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Historical material and one-off local utilities
+/docs/
+/infra/
+/ROADMAP.md
+/check_and_fix_corrupt_images.py
+/find_png_images.py
+/fix_images.py
+/inspect_png_metadata.py

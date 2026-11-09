@@ -1,0 +1,72 @@
+{
+  "name": "mnemos-gallery",
+  "productName": "Mnemos galery",
+  "version": "1.0.0",
+  "description": "Mnemos galery - organización visual de imágenes",
+  "author": "AndrezPc",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "npm run build:electron && concurrently \"vite --host 127.0.0.1 --port 5175 --strictPort\" \"wait-on http://127.0.0.1:5175 && electron .\"",
+    "build": "vite build && npm run build:electron",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "dist:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/build_installer.ps1",
+    "preview": "vite preview",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "axios": "^1.21.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.5.45"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "concurrently": "^10.0.7",
+    "daisyui": "^5.5.5",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "lucide-vue-next": "^0.555.0",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.6",
+    "vue-tsc": "^3.3.14",
+    "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "com.mnemos.gallery",
+    "productName": "Mnemos galery",
+    "artifactName": "Mnemos-gallery-Setup-${version}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/icon.ico",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/backend",
+        "to": "backend",
+        "filter": [
+          "mnemos-gallery-api.exe"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mnemos galery"
+    }
+  }
+}
