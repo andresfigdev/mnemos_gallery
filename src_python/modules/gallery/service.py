@@ -151,6 +151,7 @@ class SyncRootResult(TypedDict):
     existed: bool
     created_count: int
     updated_count: int
+    unchanged_count: int
     image_count: int
     errors: int
 
@@ -375,6 +376,7 @@ class GalleryService:
                         "existed": existed,
                         "created_count": int(scan.get("created_count", 0) or 0),
                         "updated_count": int(scan.get("updated_count", 0) or 0),
+                        "unchanged_count": int(scan.get("unchanged_count", 0) or 0),
                         "image_count": int(scan.get("image_count", 0) or 0),
                         "errors": len(scan.get("errors", []) or []),
                     }
@@ -749,6 +751,68 @@ class GalleryService:
         return directory_paths, file_paths
 
     @staticmethod
+    def _can_skip_unchanged_image(
+        file_path: Path,
+        folder_path: Path,
+        existing: Dict[str, Any] | None,
+        last_scan_at: datetime | None,
+        folder_node_id: int | None,
+    ) -> bool:
+        """Evita reprocesar una imagen que no cambió desde el último escaneo."""
+        if not existing or last_scan_at is None or not existing.get("guid"):
+            return False
+
+        if existing.get("folder_node_id") != folder_node_id:
+            return False
+
+        try:
+            file_stat = file_path.stat()
+            if int(existing.get("size") or -1) != file_stat.st_size:
+                return False
+            if file_stat.st_mtime > last_scan_at.timestamp():
+                return False
+        except OSError:
+            return False
+
+        thumb_path_value = existing.get("thumb_path")
+        if not thumb_path_value:
+            return False
+        thumb_path = Path(str(thumb_path_value))
+        if not thumb_path.is_absolute():
+            thumb_path = folder_path / thumb_path
+        return thumb_path.is_file()
+
+    @staticmethod
+    def _find_missing_images_from_scan(
+        existing_images_by_path: Dict[str, Dict[str, Any]],
+        discovered_relative_paths: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Detecta registros cuyo archivo ya no apareció en la caminata del disco.
+
+        El escaneo acaba de recorrer toda la carpeta, por lo que volver a abrir con
+        Pillow cada imagen existente solo para comprobar su presencia duplica el
+        trabajo y puede tardar varios minutos en galerías grandes.
+        """
+        discovered = {
+            os.path.normcase(os.path.normpath(str(relative_path)))
+            for relative_path in discovered_relative_paths
+        }
+        missing: List[Dict[str, Any]] = []
+        for relative_path, existing in existing_images_by_path.items():
+            normalized_path = os.path.normcase(os.path.normpath(str(relative_path)))
+            if normalized_path in discovered:
+                continue
+            missing.append({
+                "id": existing.get("id"),
+                "guid": existing.get("guid"),
+                "path": relative_path,
+                "folder_id": existing.get("folder_id"),
+                "thumb_path": existing.get("thumb_path"),
+                "reason": "not_exists",
+            })
+        return missing
+
+    @staticmethod
     def _normalize_tag_name(tag_name: str) -> str:
         return " ".join((tag_name or "").strip().lower().split())
 
@@ -951,6 +1015,7 @@ class GalleryService:
         folder_enabled = folder.enabled
         folder_name = folder.name
         folder_path_str = folder.path
+        folder_last_scan_at = folder.last_scan_at
         
         if not folder_enabled:
             logger.error(f"[SCAN] La carpeta '{folder_name}' no está habilitada para escaneo")
@@ -974,10 +1039,26 @@ class GalleryService:
         processed_count = 0  # Contador de imágenes procesadas
         created_count = 0
         updated_count = 0
+        unchanged_count = 0
         node_cache: Dict[str, FolderNode] = {}
+        existing_images_by_path: Dict[str, Dict[str, Any]] = {}
         
         logger.info(f"[SCAN] Iniciando escaneo de archivos en: {folder_path}")
         if create_records:
+            existing_images_result = await self.db.execute(
+                select(Image).where(Image.folder_id == folder_id)
+            )
+            existing_images_by_path = {
+                str(image.path): {
+                    "id": image.id,
+                    "folder_id": image.folder_id,
+                    "size": int(image.size),
+                    "thumb_path": image.thumb_path,
+                    "folder_node_id": image.folder_node_id,
+                    "guid": image.guid,
+                }
+                for image in existing_images_result.scalars().all()
+            }
             node_cache = await self._load_folder_nodes_cache(folder_id)
             await self._ensure_root_node(folder_id, folder_name, node_cache)
         
@@ -1013,7 +1094,7 @@ class GalleryService:
                             if processed_count % 50 == 0:
                                 logger.info(f"[SCAN] Progreso: {processed_count} imágenes encontradas, {created_count} creadas, {updated_count} actualizadas, {len(errors)} errores")
                             
-                            logger.info(f"[SCAN] Procesando imagen {processed_count}: {relative_path}")
+                            logger.debug(f"[SCAN] Procesando imagen {processed_count}: {relative_path}")
                             
                             image_files.append({
                                 "path": str(file_path),
@@ -1029,7 +1110,17 @@ class GalleryService:
                                         relative_path=relative_path,
                                         node_cache=node_cache,
                                     )
-                                    logger.info(f"[SCAN] Llamando a _create_or_update_image_record para: {relative_path}")
+                                    if self._can_skip_unchanged_image(
+                                        file_path=file_path,
+                                        folder_path=folder_path,
+                                        existing=existing_images_by_path.get(relative_path),
+                                        last_scan_at=folder_last_scan_at,
+                                        folder_node_id=folder_node.id,
+                                    ):
+                                        unchanged_count += 1
+                                        continue
+
+                                    logger.debug(f"[SCAN] Llamando a _create_or_update_image_record para: {relative_path}")
                                     processed = await self._create_or_update_image_record(
                                         folder_id=folder_id,
                                         folder_path=folder_path,
@@ -1037,7 +1128,7 @@ class GalleryService:
                                         relative_path=relative_path,
                                         folder_node_id=folder_node.id,
                                     )
-                                    logger.info(f"[SCAN] Resultado de _create_or_update_image_record: {processed}")
+                                    logger.debug(f"[SCAN] Resultado de _create_or_update_image_record: {processed}")
                                     if processed.get('created'):
                                         created_count += 1
                                         logger.info(f"[SCAN] ✓ Imagen CREADA: {relative_path} (Total creadas: {created_count})")
@@ -1082,6 +1173,16 @@ class GalleryService:
                                         relative_path=relative_path,
                                         node_cache=node_cache,
                                     )
+                                    if self._can_skip_unchanged_image(
+                                        file_path=file_path,
+                                        folder_path=folder_path,
+                                        existing=existing_images_by_path.get(relative_path),
+                                        last_scan_at=folder_last_scan_at,
+                                        folder_node_id=folder_node.id,
+                                    ):
+                                        unchanged_count += 1
+                                        continue
+
                                     processed = await self._create_or_update_image_record(
                                         folder_id=folder_id,
                                         folder_path=folder_path,
@@ -1121,7 +1222,11 @@ class GalleryService:
                     folder_for_update.last_scan_at = datetime.now()
                     await self.db.commit()
                     await self.db.refresh(folder_for_update)
-                logger.info(f"[SCAN] Escaneo completado: {len(image_files)} imágenes encontradas, {created_count} creadas, {updated_count} actualizadas, {len(errors)} errores")
+                logger.info(
+                    f"[SCAN] Escaneo completado: {len(image_files)} imágenes encontradas, "
+                    f"{created_count} creadas, {updated_count} actualizadas, "
+                    f"{unchanged_count} sin cambios, {len(errors)} errores"
+                )
                 
                 # Mostrar resumen de errores si hay muchos
                 if len(errors) > 0:
@@ -1135,12 +1240,15 @@ class GalleryService:
                 logger.error(f"[SCAN] Error al actualizar last_scan_at: {e}", exc_info=True)
                 await self.db.rollback()
         
-        # Detectar imágenes huérfanas DESPUÉS de actualizar la DB
-        # Esto garantiza que todos los registros estén actualizados antes de la verificación
+        # La caminata anterior ya contiene el inventario completo. Compararlo con
+        # la DB evita una segunda pasada que abría y decodificaba miles de imágenes.
         orphaned_images = []
         if create_records:
             logger.info(f"[ORPHANED] Iniciando detección de imágenes huérfanas para carpeta {folder_id}")
-            orphaned_images = await self._detect_orphaned_images(folder_id, folder_path)
+            orphaned_images = self._find_missing_images_from_scan(
+                existing_images_by_path,
+                [item["relative_path"] for item in image_files],
+            )
             if orphaned_images:
                 logger.warning(f"[ORPHANED] DETECCIÓN COMPLETADA: {len(orphaned_images)} imágenes huérfanas encontradas")
             else:
@@ -1159,6 +1267,7 @@ class GalleryService:
         if create_records:
             result["created_count"] = created_count
             result["updated_count"] = updated_count
+            result["unchanged_count"] = unchanged_count
             
             # Publicar evento de escaneo completado
             await event_bus.publish_async(Event(
