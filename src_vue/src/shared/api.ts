@@ -9,13 +9,18 @@ import axios, { AxiosInstance, AxiosError } from 'axios'
 const isElectron = !!(window.electronAPI?.isElectron)
 
 // Configurar baseURL: en Electron usamos la URL directa, en navegador usamos el proxy
-const baseURL = isElectron 
+export const apiBaseURL = isElectron
   ? 'http://localhost:8005/api'  // URL directa para Electron
   : '/api'                        // Proxy de Vite para navegador
 
+export function getApiResourceUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${apiBaseURL.replace(/\/$/, '')}${normalizedPath}`
+}
+
 // Crear instancia de axios configurada
 const apiClient: AxiosInstance = axios.create({
-  baseURL,
+  baseURL: apiBaseURL,
   timeout: 300000, // 5 minutos (300 segundos) - necesario para escanear carpetas grandes con muchas imágenes
   headers: {
     'Content-Type': 'application/json',

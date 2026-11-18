@@ -270,6 +270,7 @@ class ScanFolderResponse(BaseModel):
     image_count: int
     created_count: int
     updated_count: int
+    unchanged_count: int = 0
     errors: List[str]
     orphaned_images: List[OrphanedImageInfo] = []
 
@@ -467,6 +468,7 @@ class SyncMasterRootItemResponse(BaseModel):
     existed: bool
     created_count: int
     updated_count: int
+    unchanged_count: int = 0
     image_count: int
     errors: int
 
@@ -1449,6 +1451,7 @@ async def scan_folder(scan_data: ScanFolderRequest, db: AsyncSession = Depends(g
             image_count=result['image_count'],
             created_count=result['created_count'],
             updated_count=result['updated_count'],
+            unchanged_count=result.get('unchanged_count', 0),
             errors=result['errors'],
             orphaned_images=[OrphanedImageInfo(**img) for img in orphaned_images]
         )

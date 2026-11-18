@@ -10,8 +10,9 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
-  // Base path para Electron (relativo)
-  base: process.env.ELECTRON === 'true' ? './' : '/',
+  // Electron carga el build con file://, por lo que los assets deben ser relativos.
+  // Esta base también funciona en el servidor de desarrollo.
+  base: './',
   server: {
     host: '127.0.0.1',
     port: 5175,

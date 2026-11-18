@@ -3,7 +3,7 @@
  * Paso 8.1 - Cliente para interactuar con los endpoints de gallery
  */
 
-import apiClient from '@/shared/api'
+import apiClient, { getApiResourceUrl } from '@/shared/api'
 import type { AxiosResponse } from 'axios'
 
 export interface Folder {
@@ -159,6 +159,7 @@ export interface ScanFolderResponse {
   image_count: number
   created_count: number
   updated_count: number
+  unchanged_count: number
   errors: string[]
   orphaned_images: OrphanedImageInfo[]
 }
@@ -170,6 +171,7 @@ export interface SyncMasterRootItem {
   existed: boolean
   created_count: number
   updated_count: number
+  unchanged_count: number
   image_count: number
   errors: number
 }
@@ -230,7 +232,13 @@ export async function scanFolder(data: ScanFolderRequest): Promise<ScanFolderRes
 
 export async function syncMasterFolders(masterPath?: string): Promise<SyncMasterFoldersResponse> {
   const payload = masterPath ? { master_path: masterPath } : {}
-  const response: AxiosResponse<SyncMasterFoldersResponse> = await apiClient.post('/gallery/folders/sync-master', payload)
+  // Una biblioteca grande puede tardar bastante más que el timeout general del cliente.
+  // El backend completa el escaneo en una sola operación, por lo que esta petición no debe expirar.
+  const response: AxiosResponse<SyncMasterFoldersResponse> = await apiClient.post(
+    '/gallery/folders/sync-master',
+    payload,
+    { timeout: 0 }
+  )
   return response.data
 }
 
@@ -415,14 +423,14 @@ export async function getImage(imageId: number): Promise<Image> {
  * Obtiene la URL del thumbnail de una imagen
  */
 export function getThumbnailUrl(imageId: number): string {
-  return `/api/gallery/images/${imageId}/thumbnail`
+  return getApiResourceUrl(`/gallery/images/${imageId}/thumbnail`)
 }
 
 /**
  * Obtiene la URL de la imagen completa (no el thumbnail)
  */
 export function getFullImageUrl(imageId: number): string {
-  return `/api/gallery/images/${imageId}/full`
+  return getApiResourceUrl(`/gallery/images/${imageId}/full`)
 }
 
 /**

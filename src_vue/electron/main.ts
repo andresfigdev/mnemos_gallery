@@ -52,6 +52,8 @@ async function startPackagedBackend(): Promise<void> {
       MNEMOS_CONFIG_DIR: userDataPath,
       API_HOST: '127.0.0.1',
       API_PORT: '8005',
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
     },
     stdio: ['ignore', backendLogFd, backendLogFd],
   });

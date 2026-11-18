@@ -1,7 +1,7 @@
 {
   "name": "mnemos-gallery",
   "productName": "Mnemos galery",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Mnemos galery - organización visual de imágenes",
   "author": "AndrezPc",
   "main": "dist-electron/main.js",
@@ -48,7 +48,7 @@
     ],
     "extraResources": [
       {
-        "from": "../build/backend",
+        "from": "../build/backend-package",
         "to": "backend",
         "filter": [
           "mnemos-gallery-api.exe"
